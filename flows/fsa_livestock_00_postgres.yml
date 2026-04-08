@@ -1,0 +1,85 @@
+id: 00_postgres_fsa
+namespace: fsa_livestock
+description:
+  running flow for local ingestion and connect to local pg
+
+inputs:
+  - id: species
+    type: SELECT
+    displayName: Select species
+    values: [pig, poultry]
+    defaults: pig
+
+  - id: year
+    type: SELECT
+    displayName: Select year (2-digit)
+    values: ["17", "18", "19", "20"]
+    defaults: "18"
+
+  - id: quarter
+    type: SELECT
+    displayName: Select quarter
+    values: ["1", "2", "3", "4"]
+    defaults: "2"
+
+variables:
+  staging_table: "public.{{inputs.species}}_fsa_data_staging"
+  table: "public.{{inputs.species}}_fsa_data"
+  base_url: "https://fsadata.github.io/{{inputs.species}}-conditions/data"
+
+tasks:
+  - id: extract
+    type: io.kestra.plugin.scripts.python.Script
+    taskRunner:
+      type: io.kestra.plugin.core.runner.Process
+    outputFiles:
+      - "*.csv"
+    script: |
+      import os
+      import requests
+
+      quarter_months = {
+          "1": ("jan", "mar"),
+          "2": ("apr", "jun"),
+          "3": ("jul", "sep"),
+          "4": ("oct", "dec"),
+      }
+
+      dataset = "{{inputs.species}}"
+      year    = "{{inputs.year}}"
+      quarter = "{{inputs.quarter}}"
+      base_url = "{{vars.base_url}}"
+
+      q_init, q_fin = quarter_months[quarter]
+
+      # Special case: poultry Q1 2017 has a non-standard filename
+      if dataset == "poultry" and year == "17" and quarter == "1":
+          candidates = [f"{base_url}/poultry-conditions-jul16-mar17.csv"]
+      else:
+          q_fin_variants = [q_fin, q_fin.replace("sep", "sept")]
+          candidates = (
+              [f"{base_url}/{dataset}-conditions-{q_init}{year}-{qf}{year}.csv"   for qf in q_fin_variants] +
+              [f"{base_url}/{dataset}-conditions-{q_init}-{year}-{qf}-{year}.csv" for qf in q_fin_variants]
+          )
+
+      downloaded = None
+      for url in candidates:
+          try:
+              response = requests.head(url, allow_redirects=True, timeout=10)
+              if response.status_code == 200:
+                  filename = url.split("/")[-1]
+                  r = requests.get(url, timeout=30)
+                  with open(filename, "wb") as f:
+                      f.write(r.content)
+                  print(f"Downloaded: {filename} ({len(r.content) // 1024}K)", flush=True)
+                  downloaded = filename
+                  break
+          except Exception as e:
+              print(f"Error fetching {url}: {e}", flush=True)
+
+      if not downloaded:
+          raise Exception(f"No file found for {dataset} 20{year} Q{quarter} — tried: {candidates}")
+
+  - id: purge_files
+    type: io.kestra.plugin.core.storage.PurgeCurrentExecutionFiles
+    description: This will remove output files. If you'd like to explore Kestra outputs, disable it.
