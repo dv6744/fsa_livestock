@@ -6,76 +6,113 @@ import os
 import requests
 
 
-def download_if_available(url, output_dir="."):
-    """Check if URL exists and download it. Returns filename if successful, None otherwise."""
+QUARTER_MONTHS = {
+    1: ("jan", "mar"),
+    2: ("apr", "jun"),
+    3: ("jul", "sep"),
+    4: ("oct", "dec"),
+}
+
+SPECIAL_CASES = {
+    ("poultry", 17, 1): "poultry-conditions-jul16-mar17.csv",
+}
+
+BASE_URLS = {
+    "poultry": "https://fsadata.github.io/poultry-conditions/data",
+    "pig":     "https://fsadata.github.io/pig-conditions/data",
+}
+
+
+def _build_candidates(dataset, year, quarter):
+    """Return list of candidate URLs for a given dataset/year/quarter (ints)."""
+    base_url = BASE_URLS[dataset]
+    key = (dataset, year, quarter)
+    if key in SPECIAL_CASES:
+        return [f"{base_url}/{SPECIAL_CASES[key]}"]
+
+    q_init, q_fin = QUARTER_MONTHS[quarter]
+    q_fin_variants = [q_fin, q_fin.replace("sep", "sept")]
+    return (
+        [f"{base_url}/{dataset}-conditions-{q_init}{year}-{qf}{year}.csv"   for qf in q_fin_variants] +
+        [f"{base_url}/{dataset}-conditions-{q_init}-{year}-{qf}-{year}.csv" for qf in q_fin_variants]
+    )
+
+
+def _stream_download(url, output_path):
+    """Stream-download url to output_path. Returns True if successful."""
     try:
-        response = requests.head(url, allow_redirects=True, timeout=10)
-        if response.status_code == 200:
-            filename = url.split("/")[-1]
-            filepath = os.path.join(output_dir, filename)
-            r = requests.get(url, timeout=30)
-            with open(filepath, "wb") as f:
-                f.write(r.content)
-            print(f"  Downloaded: {filename} ({len(r.content) // 1024}K)", flush=True)
-            return filename
+        with requests.get(url, stream=True, timeout=30) as r:
+            if r.status_code == 200:
+                size = 0
+                with open(output_path, "wb") as f:
+                    for chunk in r.iter_content(chunk_size=8192):
+                        f.write(chunk)
+                        size += len(chunk)
+                print(f"  Downloaded: {os.path.basename(output_path)} ({size // 1024}K)", flush=True)
+                return True
     except Exception as e:
         print(f"  Error fetching {url}: {e}", flush=True)
-    return None
+    return False
+
+
+def download_one(dataset, year, quarter, output_dir="."):
+    """Download a single file and save as {dataset}_{year}_Q{quarter}.csv."""
+    os.makedirs(output_dir, exist_ok=True)
+    output_path = os.path.join(output_dir, f"{dataset}_{year}_Q{quarter}.csv")
+    candidates = _build_candidates(dataset, int(year), int(quarter))
+
+    for url in candidates:
+        if _stream_download(url, output_path):
+            return
+
+    raise RuntimeError(
+        f"No file found for {dataset} 20{year} Q{quarter} — tried: {candidates}"
+    )
 
 
 def download_all(output_dir="."):
+    """Download all species/years/quarters, saving as {dataset}_{year}_Q{quarter}.csv."""
     os.makedirs(output_dir, exist_ok=True)
 
-    quarter_months = {
-        1: ("jan", "mar"),
-        2: ("apr", "jun"),
-        3: ("jul", "sep"),
-        4: ("oct", "dec"),
-    }
-
-    special_cases = {
-        ("poultry", 17, 1): "poultry-conditions-jul16-mar17.csv",
-    }
-
-    datasets = {
-        "poultry": "https://fsadata.github.io/poultry-conditions/data",
-        "pig":     "https://fsadata.github.io/pig-conditions/data",
-    }
-
-    for dataset, base_url in datasets.items():
+    for dataset in BASE_URLS:
         print(f"\n=== {dataset.upper()} ===", flush=True)
         for year in range(17, 21):
             for quarter in range(1, 5):
-                q_init, q_fin = quarter_months[quarter]
-
-                key = (dataset, year, quarter)
-                if key in special_cases:
-                    url = f"{base_url}/{special_cases[key]}"
-                    if not download_if_available(url, output_dir):
-                        print(f"  Not found (special case): {special_cases[key]}", flush=True)
-                    continue
-
-                # Try both naming conventions (with/without dash) and "sept" variant
-                q_fin_variants = [q_fin, q_fin.replace("sep", "sept")]
-                candidates = (
-                    [f"{base_url}/{dataset}-conditions-{q_init}{year}-{qf}{year}.csv"   for qf in q_fin_variants] +
-                    [f"{base_url}/{dataset}-conditions-{q_init}-{year}-{qf}-{year}.csv" for qf in q_fin_variants]
-                )
-
-                downloaded = any(download_if_available(url, output_dir) for url in candidates)
+                candidates = _build_candidates(dataset, year, quarter)
+                output_path = os.path.join(output_dir, f"{dataset}_{year}_Q{quarter}.csv")
+                downloaded = False
+                for url in candidates:
+                    if _stream_download(url, output_path):
+                        downloaded = True
+                        break
                 if not downloaded:
+                    q_init, q_fin = QUARTER_MONTHS[quarter]
                     print(f"  Not found: {dataset} 20{year} Q{quarter} ({q_init}-{q_fin})", flush=True)
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Download poultry and pig condition data.")
+    parser = argparse.ArgumentParser(description="Download FSA livestock condition data.")
     parser.add_argument(
         "--output-dir",
         default=os.environ.get("OUTPUT_DIR", "./data"),
         help="Directory to save downloaded files (default: $OUTPUT_DIR or ./data)",
     )
+    parser.add_argument("--species", choices=["pig", "poultry"],
+                        help="Single species to download (requires --year and --quarter)")
+    parser.add_argument("--year",
+                        help="2-digit year, e.g. 18 for 2018 (requires --species and --quarter)")
+    parser.add_argument("--quarter", choices=["1", "2", "3", "4"],
+                        help="Quarter number (requires --species and --year)")
     args = parser.parse_args()
 
-    print(f"Saving files to: {args.output_dir}")
-    download_all(args.output_dir)
+    single_mode = any([args.species, args.year, args.quarter])
+    if single_mode:
+        if not all([args.species, args.year, args.quarter]):
+            parser.error("--species, --year, and --quarter must all be provided together")
+        print(f"Saving to: {args.output_dir}")
+        download_one(args.species, args.year, args.quarter, args.output_dir)
+    else:
+        print(f"Saving all files to: {args.output_dir}")
+        download_all(args.output_dir)
+
     print("\nDone.")
