@@ -1,6 +1,4 @@
 volumes:
-  ny_taxi_postgres_data:
-    driver: local
   kestra_postgres_data:
     driver: local
   kestra_data:
@@ -49,7 +47,7 @@ services:
       retries: 10
 
   kestra:
-    image: kestra/kestra:v1.1
+    image: kestra/kestra:latest
     pull_policy: always
     # Note that this setup with a root user is intended for development purpose.
     # Our base image runs without root, but the Docker Compose implementation needs root to access the Docker socket
@@ -60,9 +58,18 @@ services:
       - kestra_data:/app/storage
       - /var/run/docker.sock:/var/run/docker.sock
       - kestra_tmp:/tmp/kestra-wd
-      # add flows here 
-      # ./flows:/app/flows
+      - ./flows:/app/flows
+      - ~/.config/gcloud/application_default_credentials.json:/root/.config/gcloud/application_default_credentials.json
     environment:
+      GCP_PROJECT_ID: ${TF_VAR_project}                                                            
+      GCP_BUCKET_NAME: ${TF_VAR_gcs_bucket_name}                                                   
+      GCP_DATASET: ${TF_VAR_bq_dataset_name}                                                       
+      GCP_LOCATION: ${TF_VAR_location}                                                             
+      GCP_SA_IMPERSONATE: ${GCP_SA_IMPERSONATE}
+
+      #new environment variable 
+      GOOGLE_APPLICATION_CREDENTIALS: /root/.config/gcloud/application_default_credentials.json
+
       KESTRA_CONFIGURATION: |
         datasources:
           postgres:
@@ -71,6 +78,13 @@ services:
             username: kestra
             password: k3str4
         kestra:
+          variables:
+            globals:
+              gcp_project_id: ${TF_VAR_project}
+              gcp_location: ${TF_VAR_location}
+              gcp_bucket_name: ${TF_VAR_gcs_bucket_name}
+              gcp_dataset: ${TF_VAR_bq_dataset_name}
+              gcp_sa_impersonate: ${GCP_SA_IMPERSONATE}
           server:
             basicAuth:
               username: "admin@kestra.io" # it must be a valid email address
@@ -92,5 +106,5 @@ services:
       - "8081:8081"
     depends_on:
       kestra_postgres:
-        condition: service_started
+        condition: service_healthy
     
