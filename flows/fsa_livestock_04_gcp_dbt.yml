@@ -1,0 +1,62 @@
+id: 04_gcp_dbt
+namespace: fsa_livestock
+description: >
+  Syncs the dbt project from GitHub and runs dbt against the raw BigQuery tables.
+  Auth uses impersonation via ADC (stored in KV store as GCP_ADC).
+  Run `dbt debug` first to verify connectivity before running `dbt build`.
+
+inputs:
+  - id: dbt_command
+    type: SELECT
+    displayName: dbt command to run
+    allowCustomValue: true
+    defaults: dbt build
+    values:
+      - dbt build
+      - dbt debug
+
+tasks:
+  - id: sync
+    type: io.kestra.plugin.git.SyncNamespaceFiles
+    url: https://github.com/dv6744/fsa_livestock
+    branch: main
+    namespace: "{{flow.namespace}}"
+    gitDirectory: dbt
+    dryRun: false
+
+  - id: dbt_build
+    type: io.kestra.plugin.dbt.cli.DbtCLI
+    env:
+      DBT_DATABASE: "{{kv('GCP_PROJECT_ID')}}"
+      DBT_SCHEMA: "{{kv('GCP_DATASET')}}"
+      GOOGLE_APPLICATION_CREDENTIALS: adc.json
+    namespaceFiles:
+      enabled: true
+    containerImage: ghcr.io/kestra-io/dbt-bigquery:latest
+    taskRunner:
+      type: io.kestra.plugin.scripts.runner.docker.Docker
+    inputFiles:
+      adc.json: "{{kv('GCP_ADC')}}"
+    commands:
+      - dbt deps
+      - "{{inputs.dbt_command}}"
+    profiles: |
+      default:
+        outputs:
+          dev:
+            type: bigquery
+            method: impersonation
+            project: "{{kv('GCP_PROJECT_ID')}}"
+            dataset: "{{kv('GCP_DATASET')}}"
+            location: "{{kv('GCP_LOCATION')}}"
+            impersonated_service_account: "{{kv('GCP_SA_IMPERSONATE')}}"
+            threads: 4
+            timeout_seconds: 300
+        target: dev
+
+pluginDefaults:
+  - type: io.kestra.plugin.gcp
+    values:
+      projectId: "{{kv('GCP_PROJECT_ID')}}"
+      location: "{{kv('GCP_LOCATION')}}"
+      impersonatedServiceAccount: "{{kv('GCP_SA_IMPERSONATE')}}"

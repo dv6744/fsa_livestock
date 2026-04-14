@@ -1,0 +1,51 @@
+id: 05_fsa_pipeline
+namespace: fsa_livestock
+description: >
+  Full pipeline. Runs flows 02 → 03 → 04 sequentially:
+  download CSV to GCS, load GCS into BigQuery raw table, run dbt transformations.
+
+inputs:
+  - id: species
+    type: SELECT
+    displayName: Select species
+    values: [pig, poultry]
+    defaults: pig
+
+  - id: year
+    type: SELECT
+    displayName: Select year (2-digit)
+    values: ["17", "18", "19", "20"]
+    defaults: "18"
+
+  - id: quarter
+    type: SELECT
+    displayName: Select quarter
+    values: ["1", "2", "3", "4"]
+    defaults: "2"
+
+tasks:
+  - id: 02_gcs_upload
+    type: io.kestra.core.tasks.flows.Flow
+    namespace: fsa_livestock
+    flowId: 02_gcp_gcs
+    wait: true
+    inputs:
+      species: "{{inputs.species}}"
+      year: "{{inputs.year}}"
+      quarter: "{{inputs.quarter}}"
+
+  - id: 03_bq_load
+    type: io.kestra.core.tasks.flows.Flow
+    namespace: fsa_livestock
+    flowId: 03_gcp_bq
+    wait: true
+    inputs:
+      species: "{{inputs.species}}"
+      year: "{{inputs.year}}"
+      quarter: "{{inputs.quarter}}"
+
+  - id: 04_dbt_run
+    type: io.kestra.core.tasks.flows.Flow
+    namespace: fsa_livestock
+    flowId: 04_gcp_dbt
+    wait: true

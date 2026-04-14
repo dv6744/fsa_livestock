@@ -1,0 +1,46 @@
+id: 03_gcp_bq
+namespace: fsa_livestock
+description: Load FSA livestock CSV from GCS into a raw BigQuery table. No transformations — dbt handles those.
+
+inputs:
+  - id: species
+    type: SELECT
+    displayName: Select species
+    values: [pig, poultry]
+    defaults: pig
+
+  - id: year
+    type: SELECT
+    displayName: Select year (2-digit)
+    values: ["17", "18", "19", "20"]
+    defaults: "18"
+
+  - id: quarter
+    type: SELECT
+    displayName: Select quarter
+    values: ["1", "2", "3", "4"]
+    defaults: "2"
+
+variables:
+  gcs_path: "gs://{{kv('GCP_BUCKET_NAME')}}/fsa_livestock/{{inputs.species}}_{{inputs.year}}_Q{{inputs.quarter}}.csv"
+  bq_table: "{{kv('GCP_PROJECT_ID')}}.{{kv('GCP_DATASET')}}.raw_{{inputs.species}}_{{inputs.year}}_Q{{inputs.quarter}}"
+
+tasks:
+  - id: load_to_bq
+    type: io.kestra.plugin.gcp.bigquery.LoadFromGcs
+    from:
+      - "{{render(vars.gcs_path)}}"
+    destinationTable: "{{render(vars.bq_table)}}"
+    format: CSV
+    autodetect: true
+    csvOptions:
+      skipLeadingRows: 1
+    writeDisposition: WRITE_TRUNCATE
+    createDisposition: CREATE_IF_NEEDED
+
+pluginDefaults:
+  - type: io.kestra.plugin.gcp
+    values:
+      projectId: "{{kv('GCP_PROJECT_ID')}}"
+      location: "{{kv('GCP_LOCATION')}}"
+      impersonatedServiceAccount: "{{kv('GCP_SA_IMPERSONATE')}}"

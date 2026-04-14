@@ -1,0 +1,58 @@
+id: 01_gcp_kv
+namespace: fsa_livestock
+description: >
+  One-time setup. Populates the Kestra KV store with GCP config.
+  Triggered automatically by entrypoint.py which passes values from .env as inputs.
+  Re-run entrypoint.py if .env values change.
+
+inputs:
+  - id: gcp_project_id
+    type: STRING
+  - id: gcp_location
+    type: STRING
+  - id: gcp_bucket_name
+    type: STRING
+  - id: gcp_dataset
+    type: STRING
+  - id: gcp_sa_impersonate
+    type: STRING
+  - id: gcp_adc
+    type: STRING
+    description: Content of application_default_credentials.json for dbt impersonation
+
+tasks:
+  - id: gcp_project_id
+    type: io.kestra.plugin.core.kv.Set
+    key: GCP_PROJECT_ID
+    kvType: STRING
+    value: "{{inputs.gcp_project_id}}"
+
+  - id: gcp_location
+    type: io.kestra.plugin.core.kv.Set
+    key: GCP_LOCATION
+    kvType: STRING
+    value: "{{inputs.gcp_location}}"
+
+  - id: gcp_bucket_name
+    type: io.kestra.plugin.core.kv.Set
+    key: GCP_BUCKET_NAME
+    kvType: STRING
+    value: "{{inputs.gcp_bucket_name}}"
+
+  - id: gcp_dataset
+    type: io.kestra.plugin.core.kv.Set
+    key: GCP_DATASET
+    kvType: STRING
+    value: "{{inputs.gcp_dataset}}"
+
+  - id: gcp_sa_impersonate
+    type: io.kestra.plugin.core.kv.Set
+    key: GCP_SA_IMPERSONATE
+    kvType: STRING
+    value: "{{inputs.gcp_sa_impersonate}}"
+
+  - id: gcp_adc
+    type: io.kestra.plugin.core.kv.Set
+    key: GCP_ADC
+    kvType: STRING
+    value: "{{inputs.gcp_adc}}"

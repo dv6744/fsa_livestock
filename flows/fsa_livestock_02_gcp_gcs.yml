@@ -1,0 +1,97 @@
+id: 02_gcp_gcs
+namespace: fsa_livestock
+description: Download FSA livestock CSV for a given species/year/quarter and upload to GCS.
+
+inputs:
+  - id: species
+    type: SELECT
+    displayName: Select species
+    values: [pig, poultry]
+    defaults: pig
+
+  - id: year
+    type: SELECT
+    displayName: Select year (2-digit)
+    values: ["17", "18", "19", "20"]
+    defaults: "18"
+
+  - id: quarter
+    type: SELECT
+    displayName: Select quarter
+    values: ["1", "2", "3", "4"]
+    defaults: "2"
+
+variables:
+  gcs_path: "gs://{{kv('GCP_BUCKET_NAME')}}/fsa_livestock/{{inputs.species}}_{{inputs.year}}_Q{{inputs.quarter}}.csv"
+
+tasks:
+  - id: extract
+    type: io.kestra.plugin.scripts.python.Script
+    runner: DOCKER
+    docker:
+      image: python:3.11-slim
+    beforeCommands:
+      - pip install requests -q
+    outputFiles:
+      - "*.csv"
+    script: |
+      import requests
+
+      QUARTER_MONTHS = {
+          "1": ("jan", "mar"),
+          "2": ("apr", "jun"),
+          "3": ("jul", "sep"),
+          "4": ("oct", "dec"),
+      }
+
+      dataset     = "{{inputs.species}}"
+      year        = "{{inputs.year}}"
+      quarter     = "{{inputs.quarter}}"
+      base_url    = "https://fsadata.github.io/{{inputs.species}}-conditions/data"
+      output_file = "{{inputs.species}}_{{inputs.year}}_Q{{inputs.quarter}}.csv"
+
+      q_init, q_fin = QUARTER_MONTHS[quarter]
+
+      # Special case: poultry Q1 2017 has a non-standard filename
+      if dataset == "poultry" and year == "17" and quarter == "1":
+          candidates = [f"{base_url}/poultry-conditions-jul16-mar17.csv"]
+      else:
+          q_fin_variants = [q_fin, q_fin.replace("sep", "sept")]
+          candidates = (
+              [f"{base_url}/{dataset}-conditions-{q_init}{year}-{qf}{year}.csv"   for qf in q_fin_variants] +
+              [f"{base_url}/{dataset}-conditions-{q_init}-{year}-{qf}-{year}.csv" for qf in q_fin_variants]
+          )
+
+      downloaded = False
+      for url in candidates:
+          try:
+              with requests.get(url, stream=True, timeout=30) as r:
+                  if r.status_code == 200:
+                      size = 0
+                      with open(output_file, "wb") as f:
+                          for chunk in r.iter_content(chunk_size=8192):
+                              f.write(chunk)
+                              size += len(chunk)
+                      print(f"Downloaded: {url.split('/')[-1]} → {output_file} ({size // 1024}K)", flush=True)
+                      downloaded = True
+                      break
+          except Exception as e:
+              print(f"Error fetching {url}: {e}", flush=True)
+
+      if not downloaded:
+          raise Exception(f"No file found for {dataset} 20{year} Q{quarter} — tried: {candidates}")
+
+  - id: upload_to_gcs
+    type: io.kestra.plugin.gcp.gcs.Upload
+    from: "{{outputs.extract.outputFiles[inputs.species ~ '_' ~ inputs.year ~ '_Q' ~ inputs.quarter ~ '.csv']}}"
+    to: "{{render(vars.gcs_path)}}"
+
+  - id: purge_files
+    type: io.kestra.plugin.core.storage.PurgeCurrentExecutionFiles
+
+pluginDefaults:
+  - type: io.kestra.plugin.gcp
+    values:
+      projectId: "{{kv('GCP_PROJECT_ID')}}"
+      location: "{{kv('GCP_LOCATION')}}"
+      impersonatedServiceAccount: "{{kv('GCP_SA_IMPERSONATE')}}"
