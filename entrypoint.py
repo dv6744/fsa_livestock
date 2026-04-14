@@ -23,6 +23,14 @@ NAMESPACE   = "fsa_livestock"
 AUTH        = ("admin@kestra.io", "Admin1234!")
 FLOWS_DIR   = "./flows"
 
+KV = {
+    "GCP_PROJECT_ID":     os.getenv("TF_VAR_project"),
+    "GCP_LOCATION":       os.getenv("TF_VAR_location"),
+    "GCP_BUCKET_NAME":    os.getenv("TF_VAR_gcs_bucket_name"),
+    "GCP_DATASET":        os.getenv("TF_VAR_bq_dataset_name"),
+    "GCP_SA_IMPERSONATE": os.getenv("GCP_SA_IMPERSONATE"),
+}
+
 
 def wait_for_kestra(retries=12, delay=5):
     print("Waiting for Kestra to be ready...")
@@ -71,10 +79,17 @@ def upload_flows():
 
 
 def trigger_kv_flow():
-    """Trigger 01_gcp_kv and wait for it to complete."""
+    """Trigger 01_gcp_kv with .env values as inputs and wait for it to complete."""
     print(f"\nTriggering '{NAMESPACE}/01_gcp_kv' to populate KV store...")
     r = requests.post(
         f"{KESTRA_URL}/executions/{NAMESPACE}/01_gcp_kv",
+        params={
+            "inputs.gcp_project_id":     KV["GCP_PROJECT_ID"],
+            "inputs.gcp_location":       KV["GCP_LOCATION"],
+            "inputs.gcp_bucket_name":    KV["GCP_BUCKET_NAME"],
+            "inputs.gcp_dataset":        KV["GCP_DATASET"],
+            "inputs.gcp_sa_impersonate": KV["GCP_SA_IMPERSONATE"],
+        },
         auth=AUTH,
     )
     if r.status_code not in (200, 201):
@@ -98,6 +113,12 @@ def trigger_kv_flow():
 
 
 def main():
+    missing = [k for k, v in KV.items() if not v]
+    if missing:
+        print(f"ERROR: missing env vars for: {missing}")
+        print("Did you run `source .env` before this script?")
+        sys.exit(1)
+
     wait_for_kestra()
 
     print("Uploading flows from ./flows:")
