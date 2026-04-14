@@ -9,6 +9,7 @@ Usage:
 Requires: pip install requests python-dotenv pyyaml
 """
 
+import json
 import os
 import sys
 import time
@@ -22,6 +23,7 @@ KESTRA_URL = "http://localhost:8080/api/v1"
 NAMESPACE   = "fsa_livestock"
 AUTH        = ("admin@kestra.io", "Admin1234!")
 FLOWS_DIR   = "./flows"
+ADC_PATH    = os.path.expanduser("~/.config/gcloud/application_default_credentials.json")
 
 KV = {
     "GCP_PROJECT_ID":     os.getenv("TF_VAR_project"),
@@ -30,6 +32,15 @@ KV = {
     "GCP_DATASET":        os.getenv("TF_VAR_bq_dataset_name"),
     "GCP_SA_IMPERSONATE": os.getenv("GCP_SA_IMPERSONATE"),
 }
+
+
+def load_adc():
+    if not os.path.exists(ADC_PATH):
+        print(f"WARNING: ADC file not found at {ADC_PATH}")
+        print("  Run `gcloud auth application-default login` first.")
+        return None
+    with open(ADC_PATH, "r") as f:
+        return json.dumps(json.load(f))
 
 
 def wait_for_kestra(retries=12, delay=5):
@@ -78,18 +89,21 @@ def upload_flows():
         upload_flow(os.path.join(FLOWS_DIR, filename))
 
 
-def trigger_kv_flow():
-    """Trigger 01_gcp_kv with .env values as inputs and wait for it to complete."""
+def trigger_kv_flow(adc_content):
+    """Trigger 01_gcp_kv with .env values + ADC content as inputs and wait for completion."""
     print(f"\nTriggering '{NAMESPACE}/01_gcp_kv' to populate KV store...")
+    params = {
+        "inputs.gcp_project_id":     KV["GCP_PROJECT_ID"],
+        "inputs.gcp_location":       KV["GCP_LOCATION"],
+        "inputs.gcp_bucket_name":    KV["GCP_BUCKET_NAME"],
+        "inputs.gcp_dataset":        KV["GCP_DATASET"],
+        "inputs.gcp_sa_impersonate": KV["GCP_SA_IMPERSONATE"],
+    }
+    if adc_content:
+        params["inputs.gcp_adc"] = adc_content
     r = requests.post(
         f"{KESTRA_URL}/executions/{NAMESPACE}/01_gcp_kv",
-        params={
-            "inputs.gcp_project_id":     KV["GCP_PROJECT_ID"],
-            "inputs.gcp_location":       KV["GCP_LOCATION"],
-            "inputs.gcp_bucket_name":    KV["GCP_BUCKET_NAME"],
-            "inputs.gcp_dataset":        KV["GCP_DATASET"],
-            "inputs.gcp_sa_impersonate": KV["GCP_SA_IMPERSONATE"],
-        },
+        params=params,
         auth=AUTH,
     )
     if r.status_code not in (200, 201):
@@ -119,12 +133,14 @@ def main():
         print("Did you run `source .env` before this script?")
         sys.exit(1)
 
+    adc_content = load_adc()
+
     wait_for_kestra()
 
     print("Uploading flows from ./flows:")
     upload_flows()
 
-    trigger_kv_flow()
+    trigger_kv_flow(adc_content)
 
     print("\nDone. Trigger the pipeline from the Kestra UI at http://localhost:8080")
 
