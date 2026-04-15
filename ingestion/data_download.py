@@ -49,6 +49,12 @@ def _stream_download(url, output_path):
                         f.write(chunk)
                         size += len(chunk)
                 print(f"  Downloaded: {os.path.basename(output_path)} ({size // 1024}K)", flush=True)
+                # Clean header: strip any leading non-ASCII junk from first column name
+                with open(output_path, "r", encoding="utf-8") as bf:
+                    content = bf.read()
+                content = content.replace("???Species", "Species")
+                with open(output_path, "w", encoding="utf-8") as bf:
+                    bf.write(content)
                 return True
     except Exception as e:
         print(f"  Error fetching {url}: {e}", flush=True)

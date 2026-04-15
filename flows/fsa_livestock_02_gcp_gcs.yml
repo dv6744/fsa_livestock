@@ -81,6 +81,13 @@ tasks:
       if not downloaded:
           raise Exception(f"No file found for {dataset} 20{year} Q{quarter} — tried: {candidates}")
 
+      # Clean header: strip any leading non-ASCII junk from first column name
+      with open(output_file, "r", encoding="utf-8") as f:
+          content = f.read()
+      content = content.replace("???Species", "Species")
+      with open(output_file, "w", encoding="utf-8") as f:
+          f.write(content)
+
   - id: upload_to_gcs
     type: io.kestra.plugin.gcp.gcs.Upload
     from: "{{outputs.extract.outputFiles[inputs.species ~ '_' ~ inputs.year ~ '_Q' ~ inputs.quarter ~ '.csv']}}"
