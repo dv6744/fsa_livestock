@@ -21,7 +21,7 @@ tasks:
     url: https://github.com/dv6744/fsa_livestock
     branch: main
     namespace: "{{flow.namespace}}"
-    gitDirectory: dbt
+    gitDirectory: dbt_fsa
     dryRun: false
 
   - id: dbt_build
@@ -41,15 +41,15 @@ tasks:
       - dbt deps
       - "{{inputs.dbt_command}}"
     profiles: |
-      default:
+      dbt_fsa:
         outputs:
           dev:
             type: bigquery
-            method: impersonation
+            method: oauth
             project: "{{kv('GCP_PROJECT_ID')}}"
             dataset: "{{kv('GCP_DATASET')}}"
             location: "{{kv('GCP_LOCATION')}}"
-            impersonated_service_account: "{{kv('GCP_SA_IMPERSONATE')}}"
+            impersonate_service_account: "{{kv('GCP_SA_IMPERSONATE')}}"
             threads: 4
             timeout_seconds: 300
         target: dev
