@@ -1,0 +1,46 @@
+version: 2
+
+models:
+  - name: stg_pig
+    description: "Staging model for pig inspection conditions. Unions all raw_pig_* tables across years and quarters."
+    columns:
+      - name: Species
+        description: "Animal species (always 'pig' in this model)"
+      - name: InspectionType
+        description: "Type of inspection performed (e.g. ante-mortem, post-mortem)"
+      - name: Condition
+        description: "Condition observed during inspection"
+      - name: YearMonth
+        description: "Year and month of the inspection record"
+      - name: Country
+        description: "Country of origin of the livestock"
+      - name: NumberOfConditions
+        description: "Count of conditions observed"
+      - name: Throughput
+        description: "Number of animals processed"
+      - name: NumberOfThroughputPlants
+        description: "Number of plants contributing to throughput"
+      - name: PercentageOfThroughput
+        description: "Conditions as a percentage of throughput"
+
+  - name: stg_poultry
+    description: "Staging model for poultry inspection conditions. Unions all raw_poultry_* tables across years and quarters."
+    columns:
+      - name: Species
+        description: "Animal species "
+      - name: InspectionType
+        description: "Type of inspection performed"
+      - name: Condition
+        description: "Condition observed during inspection"
+      - name: YearMonth
+        description: "Year and month of the inspection record"
+      - name: Country
+        description: "Country of origin of the livestock"
+      - name: NumberOfConditions
+        description: "Count of conditions observed"
+      - name: Throughput
+        description: "Number of animals processed"
+      - name: NumberOfThroughputPlants
+        description: "Number of plants contributing to throughput"
+      - name: PercentageOfThroughput
+        description: "Conditions as a percentage of throughput"

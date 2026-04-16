@@ -1,0 +1,26 @@
+version: 2
+
+models:
+  - name: int_fsa_livestock_unioned
+    description: "Union of poultry and pig FSA data with normalised schema."
+    columns:
+      - name: species
+        description: "Animal species (pig or poultry)"
+      - name: inspection_type
+        description: "Type of inspection performed"
+      - name: condition
+        description: "Condition observed during inspection"
+      - name: date_yearmonth
+        description: "Year and month of the inspection record (DATE, first of month)"
+      - name: country
+        description: "Country of origin of the livestock"
+      - name: num_conditions
+        description: "Count of conditions observed"
+      - name: throughput
+        description: "Number of animals processed"
+      - name: num_throughput_plants
+        description: "Number of plants contributing to throughput"
+      - name: pct_throughput
+        description: "Conditions as a percentage of throughput"
+      - name: table_suffix
+        description: "Source table identifier from BigQuery wildcard (e.g. 18_Q2)"

@@ -1,0 +1,14 @@
+version: 2
+
+sources:
+  - name: raw
+    description: "Raw FSA livestock data loaded from GCS into BigQuery"
+    database: "{{ env_var('DBT_DATABASE') }}"
+    schema: "{{ env_var('DBT_SCHEMA') }}"
+    tables:
+      - name: pig_data
+        description: "All pig inspection records (wildcard across all years/quarters)"
+        identifier: "raw_pig_*"
+      - name: poultry_data
+        description: "All poultry inspection records (wildcard across all years/quarters)"
+        identifier: "raw_poultry_*"
